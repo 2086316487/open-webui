@@ -51,6 +51,8 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          build-args: |
+            USE_SLIM=true
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
