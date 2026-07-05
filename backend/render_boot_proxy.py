@@ -10,27 +10,27 @@ from typing import Mapping
 from aiohttp import ClientSession, ClientTimeout, WSMsgType, web
 
 
-PUBLIC_HOST = os.getenv("HOST", "0.0.0.0")
-PUBLIC_PORT = int(os.getenv("PORT", "8080"))
-UPSTREAM_HOST = os.getenv("OPEN_WEBUI_INTERNAL_HOST", "127.0.0.1")
-UPSTREAM_PORT = int(os.getenv("OPEN_WEBUI_INTERNAL_PORT", "18080"))
-UPSTREAM_HTTP = os.getenv("OPEN_WEBUI_UPSTREAM_URL", f"http://{UPSTREAM_HOST}:{UPSTREAM_PORT}")
-UPSTREAM_WS = UPSTREAM_HTTP.replace("http://", "ws://", 1).replace("https://", "wss://", 1)
+PUBLIC_HOST = os.getenv('HOST', '0.0.0.0')
+PUBLIC_PORT = int(os.getenv('PORT', '8080'))
+UPSTREAM_HOST = os.getenv('OPEN_WEBUI_INTERNAL_HOST', '127.0.0.1')
+UPSTREAM_PORT = int(os.getenv('OPEN_WEBUI_INTERNAL_PORT', '18080'))
+UPSTREAM_HTTP = os.getenv('OPEN_WEBUI_UPSTREAM_URL', f'http://{UPSTREAM_HOST}:{UPSTREAM_PORT}')
+UPSTREAM_WS = UPSTREAM_HTTP.replace('http://', 'ws://', 1).replace('https://', 'wss://', 1)
 
 HOP_BY_HOP_HEADERS = {
-    "connection",
-    "keep-alive",
-    "proxy-authenticate",
-    "proxy-authorization",
-    "te",
-    "trailer",
-    "transfer-encoding",
-    "upgrade",
+    'connection',
+    'keep-alive',
+    'proxy-authenticate',
+    'proxy-authorization',
+    'te',
+    'trailer',
+    'transfer-encoding',
+    'upgrade',
 }
 
 
 def log(message: str) -> None:
-    print(f"[render_boot_proxy] {message}", flush=True)
+    print(f'[render_boot_proxy] {message}', flush=True)
 
 
 def filtered_headers(headers: Mapping[str, str]) -> dict[str, str]:
@@ -38,68 +38,69 @@ def filtered_headers(headers: Mapping[str, str]) -> dict[str, str]:
 
 
 def upstream_url(request: web.Request, base_url: str) -> str:
-    return f"{base_url}{request.rel_url}"
+    return f'{base_url}{request.rel_url}'
 
 
 def child_command() -> list[str]:
-    configured = os.getenv("RENDER_BOOT_PROXY_CHILD_CMD")
+    configured = os.getenv('RENDER_BOOT_PROXY_CHILD_CMD')
     if configured:
         return shlex.split(configured)
-    return ["bash", "start.sh"]
+    return ['bash', 'start.sh']
 
 
 async def start_child(app: web.Application) -> None:
     child_env = os.environ.copy()
-    child_env["HOST"] = UPSTREAM_HOST
-    child_env["PORT"] = str(UPSTREAM_PORT)
-    child_env["RENDER_BOOT_PROXY"] = "false"
-    child_env.setdefault("UVICORN_WORKERS", "1")
+    child_env['HOST'] = UPSTREAM_HOST
+    child_env['PORT'] = str(UPSTREAM_PORT)
+    child_env['RENDER_BOOT_PROXY'] = 'false'
+    child_env.setdefault('UVICORN_WORKERS', '1')
 
     cmd = child_command()
-    log(f"starting child: {' '.join(shlex.quote(part) for part in cmd)}")
-    log(f"listening on {PUBLIC_HOST}:{PUBLIC_PORT}, forwarding to {UPSTREAM_HTTP}")
+    command_display = ' '.join(shlex.quote(part) for part in cmd)
+    log(f'starting child: {command_display}')
+    log(f'listening on {PUBLIC_HOST}:{PUBLIC_PORT}, forwarding to {UPSTREAM_HTTP}')
     process = await asyncio.create_subprocess_exec(*cmd, env=child_env)
-    app["child_process"] = process
-    app["upstream_ready"] = False
-    app["monitor_task"] = asyncio.create_task(monitor_child(process))
-    app["probe_task"] = asyncio.create_task(probe_upstream(app))
+    app['child_process'] = process
+    app['upstream_ready'] = False
+    app['monitor_task'] = asyncio.create_task(monitor_child(process))
+    app['probe_task'] = asyncio.create_task(probe_upstream(app))
 
 
 async def monitor_child(process: asyncio.subprocess.Process) -> None:
     return_code = await process.wait()
-    log(f"child exited with code {return_code}")
+    log(f'child exited with code {return_code}')
     os._exit(return_code or 1)
 
 
 async def probe_upstream(app: web.Application) -> None:
-    session: ClientSession = app["session"]
+    session: ClientSession = app['session']
     while True:
         try:
-            async with session.get(f"{UPSTREAM_HTTP}/health") as response:
+            async with session.get(f'{UPSTREAM_HTTP}/health') as response:
                 if response.status < 500:
-                    if not app["upstream_ready"]:
-                        log("upstream is ready")
-                    app["upstream_ready"] = True
+                    if not app['upstream_ready']:
+                        log('upstream is ready')
+                    app['upstream_ready'] = True
                     await asyncio.sleep(10)
                     continue
         except Exception:
             pass
 
-        app["upstream_ready"] = False
+        app['upstream_ready'] = False
         await asyncio.sleep(2)
 
 
 async def create_session(app: web.Application) -> None:
-    app["session"] = ClientSession(timeout=ClientTimeout(total=None, sock_connect=30))
+    app['session'] = ClientSession(timeout=ClientTimeout(total=None, sock_connect=30))
 
 
 async def cleanup(app: web.Application) -> None:
-    for task_name in ("probe_task", "monitor_task"):
+    for task_name in ('probe_task', 'monitor_task'):
         task = app.get(task_name)
         if task:
             task.cancel()
 
-    process = app.get("child_process")
+    process = app.get('child_process')
     if process and process.returncode is None:
         process.send_signal(signal.SIGTERM)
         try:
@@ -107,7 +108,7 @@ async def cleanup(app: web.Application) -> None:
         except asyncio.TimeoutError:
             process.kill()
 
-    session = app.get("session")
+    session = app.get('session')
     if session:
         await session.close()
 
@@ -115,8 +116,8 @@ async def cleanup(app: web.Application) -> None:
 async def health(request: web.Request) -> web.Response:
     return web.json_response(
         {
-            "status": True,
-            "upstream_ready": bool(request.app.get("upstream_ready", False)),
+            'status': True,
+            'upstream_ready': bool(request.app.get('upstream_ready', False)),
         }
     )
 
@@ -125,10 +126,10 @@ async def proxy_websocket(request: web.Request) -> web.WebSocketResponse:
     server_ws = web.WebSocketResponse()
     await server_ws.prepare(request)
 
-    session: ClientSession = request.app["session"]
+    session: ClientSession = request.app['session']
     headers = filtered_headers(request.headers)
-    headers["x-forwarded-host"] = request.host
-    headers["x-forwarded-proto"] = request.scheme
+    headers['x-forwarded-host'] = request.host
+    headers['x-forwarded-proto'] = request.scheme
 
     try:
         async with session.ws_connect(upstream_url(request, UPSTREAM_WS), headers=headers) as client_ws:
@@ -153,22 +154,22 @@ async def proxy_websocket(request: web.Request) -> web.WebSocketResponse:
 
             await asyncio.gather(client_to_upstream(), upstream_to_client())
     except Exception as exc:
-        log(f"websocket proxy error: {exc}")
+        log(f'websocket proxy error: {exc}')
 
     return server_ws
 
 
 async def proxy_http(request: web.Request) -> web.StreamResponse:
-    if request.path == "/health":
+    if request.path == '/health':
         return await health(request)
 
-    session: ClientSession = request.app["session"]
-    if request.headers.get("upgrade", "").lower() == "websocket":
+    session: ClientSession = request.app['session']
+    if request.headers.get('upgrade', '').lower() == 'websocket':
         return await proxy_websocket(request)
 
     headers = filtered_headers(request.headers)
-    headers["x-forwarded-host"] = request.host
-    headers["x-forwarded-proto"] = request.scheme
+    headers['x-forwarded-host'] = request.host
+    headers['x-forwarded-proto'] = request.scheme
     body = await request.read()
 
     try:
@@ -192,8 +193,8 @@ async def proxy_http(request: web.Request) -> web.StreamResponse:
     except Exception:
         return web.Response(
             status=503,
-            text="Open WebUI is still starting. Refresh this page in a minute.",
-            content_type="text/plain",
+            text='Open WebUI is still starting. Refresh this page in a minute.',
+            content_type='text/plain',
         )
 
 
@@ -202,11 +203,11 @@ def main() -> None:
     app.on_startup.append(create_session)
     app.on_startup.append(start_child)
     app.on_cleanup.append(cleanup)
-    app.router.add_route("*", "/{path_info:.*}", proxy_http)
+    app.router.add_route('*', '/{path_info:.*}', proxy_http)
     web.run_app(app, host=PUBLIC_HOST, port=PUBLIC_PORT, print=None, access_log=None)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:

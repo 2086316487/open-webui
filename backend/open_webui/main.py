@@ -591,10 +591,7 @@ async def initialize_runtime_config(app: FastAPI):
         else:
             app.state.ef = get_ef(rag_config.get('rag.embedding_engine'), rag_config.get('rag.embedding_model'))
 
-        if (
-            rag_config.get('rag.enable_hybrid_search')
-            and not rag_config.get('rag.bypass_embedding_and_retrieval')
-        ):
+        if rag_config.get('rag.enable_hybrid_search') and not rag_config.get('rag.bypass_embedding_and_retrieval'):
             app.state.rf = get_rf(
                 rag_config.get('rag.reranking_engine'),
                 rag_config.get('rag.reranking_model'),
