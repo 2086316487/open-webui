@@ -356,7 +356,9 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(scheduler_worker_loop(app))
 
-    if await Config.get('models.base_models_cache'):
+    if OPEN_WEBUI_LITE_MODE:
+        log.info('Skipping startup model cache pre-fetch because OPEN_WEBUI_LITE_MODE is enabled.')
+    elif await Config.get('models.base_models_cache'):
         try:
             await get_all_models(
                 Request(
@@ -381,7 +383,9 @@ async def lifespan(app: FastAPI):
             log.warning(f'Failed to pre-fetch models at startup: {e}')
 
     # Pre-fetch tool server specs so the first request doesn't pay the latency cost
-    if len(await Config.get('tool_server.connections', []) or []) > 0:
+    if OPEN_WEBUI_LITE_MODE:
+        log.info('Skipping startup tool and terminal server initialization because OPEN_WEBUI_LITE_MODE is enabled.')
+    elif len(await Config.get('tool_server.connections', []) or []) > 0:
         mock_request = Request(
             {
                 'type': 'http',
