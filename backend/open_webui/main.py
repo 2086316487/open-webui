@@ -584,8 +584,17 @@ async def initialize_runtime_config(app: FastAPI):
             'rag.external_reranker_api_key',
             'rag.external_reranker_timeout',
         )
-        app.state.ef = get_ef(rag_config.get('rag.embedding_engine'), rag_config.get('rag.embedding_model'))
-        if rag_config.get('rag.enable_hybrid_search') and not rag_config.get('rag.bypass_embedding_and_retrieval'):
+        if rag_config.get('rag.bypass_embedding_and_retrieval'):
+            log.info('Skipping startup embedding and reranking model initialization because RAG bypass is enabled.')
+            app.state.ef = None
+            app.state.rf = None
+        else:
+            app.state.ef = get_ef(rag_config.get('rag.embedding_engine'), rag_config.get('rag.embedding_model'))
+
+        if (
+            rag_config.get('rag.enable_hybrid_search')
+            and not rag_config.get('rag.bypass_embedding_and_retrieval')
+        ):
             app.state.rf = get_rf(
                 rag_config.get('rag.reranking_engine'),
                 rag_config.get('rag.reranking_model'),
@@ -615,44 +624,49 @@ async def initialize_runtime_config(app: FastAPI):
         'rag.reranking_engine',
         'rag.reranking_model',
         'rag.reranking_batch_size',
+        'rag.bypass_embedding_and_retrieval',
     )
-    embedding_engine = rag_config.get('rag.embedding_engine')
-    app.state.EMBEDDING_FUNCTION = get_embedding_function(
-        embedding_engine,
-        rag_config.get('rag.embedding_model'),
-        embedding_function=app.state.ef,
-        url=(
-            rag_config.get('rag.openai.api_base_url')
-            if embedding_engine == 'openai'
-            else (
-                rag_config.get('rag.ollama.base_url')
-                if embedding_engine == 'ollama'
-                else rag_config.get('rag.azure_openai.base_url')
-            )
-        ),
-        key=(
-            rag_config.get('rag.openai.api_key')
-            if embedding_engine == 'openai'
-            else (
-                rag_config.get('rag.ollama.api_key')
-                if embedding_engine == 'ollama'
-                else rag_config.get('rag.azure_openai.api_key')
-            )
-        ),
-        embedding_batch_size=rag_config.get('rag.embedding_batch_size'),
-        azure_api_version=(
-            rag_config.get('rag.azure_openai.api_version') if embedding_engine == 'azure_openai' else None
-        ),
-        enable_async=rag_config.get('rag.enable_async_embedding'),
-        concurrent_requests=rag_config.get('rag.embedding_concurrent_requests'),
-    )
+    if rag_config.get('rag.bypass_embedding_and_retrieval'):
+        app.state.EMBEDDING_FUNCTION = None
+        app.state.RERANKING_FUNCTION = None
+    else:
+        embedding_engine = rag_config.get('rag.embedding_engine')
+        app.state.EMBEDDING_FUNCTION = get_embedding_function(
+            embedding_engine,
+            rag_config.get('rag.embedding_model'),
+            embedding_function=app.state.ef,
+            url=(
+                rag_config.get('rag.openai.api_base_url')
+                if embedding_engine == 'openai'
+                else (
+                    rag_config.get('rag.ollama.base_url')
+                    if embedding_engine == 'ollama'
+                    else rag_config.get('rag.azure_openai.base_url')
+                )
+            ),
+            key=(
+                rag_config.get('rag.openai.api_key')
+                if embedding_engine == 'openai'
+                else (
+                    rag_config.get('rag.ollama.api_key')
+                    if embedding_engine == 'ollama'
+                    else rag_config.get('rag.azure_openai.api_key')
+                )
+            ),
+            embedding_batch_size=rag_config.get('rag.embedding_batch_size'),
+            azure_api_version=(
+                rag_config.get('rag.azure_openai.api_version') if embedding_engine == 'azure_openai' else None
+            ),
+            enable_async=rag_config.get('rag.enable_async_embedding'),
+            concurrent_requests=rag_config.get('rag.embedding_concurrent_requests'),
+        )
 
-    app.state.RERANKING_FUNCTION = get_reranking_function(
-        rag_config.get('rag.reranking_engine'),
-        rag_config.get('rag.reranking_model'),
-        reranking_function=app.state.rf,
-        reranking_batch_size=rag_config.get('rag.reranking_batch_size'),
-    )
+        app.state.RERANKING_FUNCTION = get_reranking_function(
+            rag_config.get('rag.reranking_engine'),
+            rag_config.get('rag.reranking_model'),
+            reranking_function=app.state.rf,
+            reranking_batch_size=rag_config.get('rag.reranking_batch_size'),
+        )
 
 
 ########################################

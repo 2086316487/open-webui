@@ -16,6 +16,12 @@ set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 cd "$SCRIPT_DIR" || exit 1
 
+RENDER_BOOT_PROXY="${RENDER_BOOT_PROXY:-false}"
+if [[ "${RENDER_BOOT_PROXY,,}" == "true" ]]; then
+  PYTHON_CMD=$(command -v python3 || command -v python)
+  exec "$PYTHON_CMD" render_boot_proxy.py
+fi
+
 # ── Playwright browser installation (if configured) ──────────────────────────
 
 if [[ "${WEB_LOADER_ENGINE,,}" == "playwright" ]]; then
