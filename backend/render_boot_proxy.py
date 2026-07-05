@@ -33,6 +33,7 @@ def child_environment() -> dict[str, str]:
     env['HOST'] = UPSTREAM_HOST
     env['PORT'] = str(UPSTREAM_PORT)
     env['RENDER_BOOT_PROXY'] = 'false'
+    env.setdefault('OPEN_WEBUI_LITE_MODE', 'true')
     env.setdefault('UVICORN_WORKERS', '1')
     env.setdefault('PYTHONDONTWRITEBYTECODE', '1')
     env.setdefault('MALLOC_ARENA_MAX', '1')

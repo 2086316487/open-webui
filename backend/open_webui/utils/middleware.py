@@ -18,6 +18,7 @@ from uuid import uuid4
 from aiocache import cached
 from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel
 from open_webui.config import (
     CACHE_DIR,
     CODE_INTERPRETER_BLOCKED_MODULES,
@@ -37,6 +38,7 @@ from open_webui.env import (
     ENABLE_REALTIME_CHAT_SAVE,
     ENABLE_RESPONSES_API_STATEFUL,
     GLOBAL_LOG_LEVEL,
+    OPEN_WEBUI_LITE_MODE,
     RAG_SYSTEM_CONTEXT,
 )
 from open_webui.models.chats import Chats
@@ -46,28 +48,6 @@ from open_webui.models.functions import Functions
 from open_webui.models.models import Models
 from open_webui.models.oauth_sessions import OAuthSessions
 from open_webui.models.users import UserModel, Users
-from open_webui.retrieval.utils import get_sources_from_items
-from open_webui.routers.images import (
-    CreateImageForm,
-    EditImageForm,
-    image_edits,
-    image_generations,
-)
-from open_webui.routers.pipelines import (
-    process_pipeline_inlet_filter,
-    process_pipeline_outlet_filter,
-)
-from open_webui.routers.retrieval import (
-    SearchForm,
-    process_web_search,
-)
-from open_webui.routers.tasks import (
-    generate_chat_tags,
-    generate_follow_ups,
-    generate_image_prompt,
-    generate_queries,
-    generate_title,
-)
 from open_webui.socket.main import (
     get_event_call,
     get_event_emitter,
@@ -77,12 +57,6 @@ from open_webui.utils.access_control.files import get_accessible_folder_files
 from open_webui.utils.chat import generate_chat_completion
 from open_webui.utils.code_interpreter import execute_code_jupyter
 from open_webui.utils.context_compaction import compact_messages_for_request
-from open_webui.utils.files import (
-    convert_markdown_base64_images,
-    get_file_url_from_base64,
-    get_image_base64_from_url,
-    get_image_url_from_base64,
-)
 from open_webui.utils.filter import (
     get_sorted_filter_ids,
     process_filter_functions,
@@ -131,6 +105,93 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 
 logging.basicConfig(stream=sys.stdout, level=GLOBAL_LOG_LEVEL)
 log = logging.getLogger(__name__)
+
+if OPEN_WEBUI_LITE_MODE:
+
+    async def process_pipeline_inlet_filter(request, form_data, user, models):
+        return form_data
+
+    async def process_pipeline_outlet_filter(request, outlet_data, user, models):
+        return outlet_data
+
+    async def generate_chat_tags(*args, **kwargs):
+        return JSONResponse(status_code=503, content={'detail': 'Task generation is disabled in lite mode.'})
+
+    async def generate_follow_ups(*args, **kwargs):
+        return JSONResponse(status_code=503, content={'detail': 'Task generation is disabled in lite mode.'})
+
+    async def generate_image_prompt(*args, **kwargs):
+        return JSONResponse(status_code=503, content={'detail': 'Image prompt generation is disabled in lite mode.'})
+
+    async def generate_queries(*args, **kwargs):
+        return JSONResponse(status_code=503, content={'detail': 'Query generation is disabled in lite mode.'})
+
+    async def generate_title(*args, **kwargs):
+        return JSONResponse(status_code=503, content={'detail': 'Title generation is disabled in lite mode.'})
+
+    class SearchForm(BaseModel):
+        queries: list[str]
+
+    class CreateImageForm(BaseModel):
+        prompt: str
+
+    class EditImageForm(BaseModel):
+        prompt: str
+        image: list[str]
+
+    async def process_web_search(*args, **kwargs):
+        raise HTTPException(status_code=503, detail='Web search is disabled in lite mode.')
+
+    async def image_edits(*args, **kwargs):
+        raise HTTPException(status_code=503, detail='Image editing is disabled in lite mode.')
+
+    async def image_generations(*args, **kwargs):
+        raise HTTPException(status_code=503, detail='Image generation is disabled in lite mode.')
+
+    async def get_sources_from_items(*args, **kwargs):
+        return []
+
+    async def convert_markdown_base64_images(request, content, metadata, user):
+        return content
+
+    async def get_file_url_from_base64(*args, **kwargs):
+        raise HTTPException(status_code=503, detail='File uploads are disabled in lite mode.')
+
+    async def get_image_base64_from_url(*args, **kwargs):
+        return None
+
+    async def get_image_url_from_base64(request, url, metadata, user):
+        return url
+
+else:
+    from open_webui.retrieval.utils import get_sources_from_items
+    from open_webui.routers.images import (
+        CreateImageForm,
+        EditImageForm,
+        image_edits,
+        image_generations,
+    )
+    from open_webui.routers.pipelines import (
+        process_pipeline_inlet_filter,
+        process_pipeline_outlet_filter,
+    )
+    from open_webui.routers.retrieval import (
+        SearchForm,
+        process_web_search,
+    )
+    from open_webui.routers.tasks import (
+        generate_chat_tags,
+        generate_follow_ups,
+        generate_image_prompt,
+        generate_queries,
+        generate_title,
+    )
+    from open_webui.utils.files import (
+        convert_markdown_base64_images,
+        get_file_url_from_base64,
+        get_image_base64_from_url,
+        get_image_url_from_base64,
+    )
 
 
 # We believe in one maker of all models, seen and unseen,

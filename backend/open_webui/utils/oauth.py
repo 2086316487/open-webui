@@ -82,12 +82,17 @@ from open_webui.models.config import Config
 from open_webui.models.groups import GroupForm, GroupModel, Groups, GroupUpdateForm
 from open_webui.models.oauth_sessions import OAuthSessions
 from open_webui.models.users import Users
-from open_webui.retrieval.web.utils import validate_url
 from open_webui.utils.auth import create_token, get_password_hash
 from open_webui.utils.groups import apply_default_group_assignment
 from open_webui.utils.misc import parse_duration
 from open_webui.utils.validate import validate_profile_image_url
 from starlette.responses import RedirectResponse
+
+
+def validate_url(url):
+    from open_webui.retrieval.web.utils import validate_url as _validate_url
+
+    return _validate_url(url)
 
 
 class OAuthClientMetadata(MCPOAuthClientMetadata):

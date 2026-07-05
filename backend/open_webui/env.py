@@ -40,6 +40,7 @@ except ImportError:
     print('dotenv not installed, skipping...')
 
 DOCKER = os.getenv('DOCKER', 'False').lower() == 'true'
+OPEN_WEBUI_LITE_MODE = os.getenv('OPEN_WEBUI_LITE_MODE', 'False').lower() == 'true'
 
 USE_CUDA = os.getenv('USE_CUDA_DOCKER', 'false')
 DEVICE_TYPE = 'cpu'

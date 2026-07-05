@@ -37,6 +37,7 @@ from open_webui.env import (
     ENABLE_FORWARD_USER_INFO_HEADERS,
     FORWARD_SESSION_INFO_HEADER_CHAT_ID,
     FORWARD_SESSION_INFO_HEADER_MESSAGE_ID,
+    OPEN_WEBUI_LITE_MODE,
     REDIS_KEY_PREFIX,
 )
 from open_webui.models.access_grants import AccessGrants
@@ -44,55 +45,57 @@ from open_webui.models.config import Config
 from open_webui.models.groups import Groups
 from open_webui.models.tools import Tools
 from open_webui.models.users import UserModel
-from open_webui.tools.builtin import (
-    add_memory,
-    calculate_timestamp,
-    create_automation,
-    create_calendar_event,
-    create_tasks,
-    delete_automation,
-    delete_calendar_event,
-    delete_memory,
-    edit_image,
-    execute_code,
-    fetch_url,
-    generate_image,
-    get_current_timestamp,
-    grep_knowledge_files,
-    kb_exec,
-    list_automations,
-    list_knowledge,
-    list_knowledge_bases,
-    list_memories,
-    list_memory_paths,
-    query_knowledge_bases,
-    query_knowledge_files,
-    read_memory_path,
-    replace_memory_content,
-    replace_note_content,
-    search_calendar_events,
-    search_channel_messages,
-    search_channels,
-    search_chats,
-    search_knowledge_bases,
-    search_knowledge_files,
-    search_memories,
-    search_notes,
-    search_web,
-    toggle_automation,
-    update_automation,
-    update_calendar_event,
-    update_memory,
-    update_task,
-    view_channel_message,
-    view_channel_thread,
-    view_chat,
-    view_file,
-    view_knowledge_file,
-    view_note,
-    view_skill,
-    write_note,
-)
+
+if not OPEN_WEBUI_LITE_MODE:
+    from open_webui.tools.builtin import (
+        add_memory,
+        calculate_timestamp,
+        create_automation,
+        create_calendar_event,
+        create_tasks,
+        delete_automation,
+        delete_calendar_event,
+        delete_memory,
+        edit_image,
+        execute_code,
+        fetch_url,
+        generate_image,
+        get_current_timestamp,
+        grep_knowledge_files,
+        kb_exec,
+        list_automations,
+        list_knowledge,
+        list_knowledge_bases,
+        list_memories,
+        list_memory_paths,
+        query_knowledge_bases,
+        query_knowledge_files,
+        read_memory_path,
+        replace_memory_content,
+        replace_note_content,
+        search_calendar_events,
+        search_channel_messages,
+        search_channels,
+        search_chats,
+        search_knowledge_bases,
+        search_knowledge_files,
+        search_memories,
+        search_notes,
+        search_web,
+        toggle_automation,
+        update_automation,
+        update_calendar_event,
+        update_memory,
+        update_task,
+        view_channel_message,
+        view_channel_thread,
+        view_chat,
+        view_file,
+        view_knowledge_file,
+        view_note,
+        view_skill,
+        write_note,
+    )
 from open_webui.utils.access_control import has_access, has_connection_access, has_permission
 from open_webui.utils.headers import get_custom_headers, include_user_info_headers
 from open_webui.utils.misc import is_string_allowed
@@ -469,6 +472,9 @@ async def get_builtin_tools(
     Get built-in tools for native function calling.
     Only returns tools when BOTH the global config is enabled AND the model capability allows it.
     """
+    if OPEN_WEBUI_LITE_MODE:
+        return {}
+
     tools_dict = {}
     builtin_functions = []
     features = features or {}

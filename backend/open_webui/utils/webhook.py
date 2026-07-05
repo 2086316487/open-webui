@@ -8,9 +8,20 @@ from open_webui.env import (
     AIOHTTP_CLIENT_SESSION_SSL,
     VERSION,
 )
-from open_webui.retrieval.web.utils import get_ssrf_safe_session, validate_url
 
 log = logging.getLogger(__name__)
+
+
+def validate_url(url):
+    from open_webui.retrieval.web.utils import validate_url as _validate_url
+
+    return _validate_url(url)
+
+
+def get_ssrf_safe_session():
+    from open_webui.retrieval.web.utils import get_ssrf_safe_session as _get_ssrf_safe_session
+
+    return _get_ssrf_safe_session()
 
 
 # Let this message reach those for whom it was written, and

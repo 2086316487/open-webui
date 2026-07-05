@@ -100,6 +100,7 @@ from open_webui.env import (
     LICENSE_KEY,
     LOG_FORMAT,
     MAX_BODY_LOG_SIZE,
+    OPEN_WEBUI_LITE_MODE,
     # Redis
     REDIS_KEY_PREFIX,
     REDIS_URL,
@@ -137,41 +138,25 @@ from open_webui.models.models import Models
 from open_webui.models.users import Users
 from open_webui.routers import (
     analytics,
-    audio,
     auths,
     automations,
     calendar,
-    channels,
     chats,
     configs,
-    evaluations,
-    files,
     folders,
     functions,
     groups,
-    images,
-    knowledge,
-    memories,
     models,
     notes,
     ollama,
     openai,
-    pipelines,
     prompts,
-    retrieval,
     scim,
     skills,
-    tasks,
     terminals,
     tools,
     users,
     utils,
-)
-from open_webui.routers.retrieval import (
-    get_ef,
-    get_embedding_function,
-    get_reranking_function,
-    get_rf,
 )
 from open_webui.socket.main import (
     MODELS,
@@ -256,6 +241,25 @@ if SAFE_MODE:
 
 logging.basicConfig(stream=sys.stdout, level=GLOBAL_LOG_LEVEL)
 log = logging.getLogger(__name__)
+
+if OPEN_WEBUI_LITE_MODE:
+    log.info('OPEN_WEBUI_LITE_MODE enabled: optional RAG/media/pipeline routers are not imported at startup.')
+    audio = channel_routes = evaluations = files = images = knowledge = memory_routes = pipelines = retrieval = (
+        task_routes
+    ) = None
+else:
+    from open_webui.routers import (
+        audio,
+        channels as channel_routes,
+        evaluations,
+        files,
+        images,
+        knowledge,
+        memories as memory_routes,
+        pipelines,
+        retrieval,
+    )
+    from open_webui.routers import tasks as task_routes
 
 
 class SPAStaticFiles(StaticFiles):
@@ -572,98 +576,108 @@ async def initialize_runtime_config(app: FastAPI):
     app.state.rf = None
     app.state.YOUTUBE_LOADER_TRANSLATION = None
 
-    try:
+    if OPEN_WEBUI_LITE_MODE:
+        log.info('Skipping startup RAG initialization because OPEN_WEBUI_LITE_MODE is enabled.')
+    else:
+        from open_webui.routers.retrieval import (
+            get_ef,
+            get_embedding_function,
+            get_reranking_function,
+            get_rf,
+        )
+
+        try:
+            rag_config = await Config.get_many(
+                'rag.embedding_engine',
+                'rag.embedding_model',
+                'rag.enable_hybrid_search',
+                'rag.bypass_embedding_and_retrieval',
+                'rag.reranking_engine',
+                'rag.reranking_model',
+                'rag.external_reranker_url',
+                'rag.external_reranker_api_key',
+                'rag.external_reranker_timeout',
+            )
+            if rag_config.get('rag.bypass_embedding_and_retrieval'):
+                log.info('Skipping startup embedding and reranking model initialization because RAG bypass is enabled.')
+                app.state.ef = None
+                app.state.rf = None
+            else:
+                app.state.ef = get_ef(rag_config.get('rag.embedding_engine'), rag_config.get('rag.embedding_model'))
+
+            if rag_config.get('rag.enable_hybrid_search') and not rag_config.get('rag.bypass_embedding_and_retrieval'):
+                app.state.rf = get_rf(
+                    rag_config.get('rag.reranking_engine'),
+                    rag_config.get('rag.reranking_model'),
+                    rag_config.get('rag.external_reranker_url'),
+                    rag_config.get('rag.external_reranker_api_key'),
+                    rag_config.get('rag.external_reranker_timeout'),
+                )
+            else:
+                app.state.rf = None
+        except Exception as e:
+            log.error(f'Error updating models: {e}')
+            app.state.rf = None
+
         rag_config = await Config.get_many(
             'rag.embedding_engine',
             'rag.embedding_model',
-            'rag.enable_hybrid_search',
-            'rag.bypass_embedding_and_retrieval',
+            'rag.openai.api_base_url',
+            'rag.ollama.base_url',
+            'rag.azure_openai.base_url',
+            'rag.openai.api_key',
+            'rag.ollama.api_key',
+            'rag.azure_openai.api_key',
+            'rag.embedding_batch_size',
+            'rag.azure_openai.api_version',
+            'rag.enable_async_embedding',
+            'rag.embedding_concurrent_requests',
             'rag.reranking_engine',
             'rag.reranking_model',
-            'rag.external_reranker_url',
-            'rag.external_reranker_api_key',
-            'rag.external_reranker_timeout',
+            'rag.reranking_batch_size',
+            'rag.bypass_embedding_and_retrieval',
         )
         if rag_config.get('rag.bypass_embedding_and_retrieval'):
-            log.info('Skipping startup embedding and reranking model initialization because RAG bypass is enabled.')
-            app.state.ef = None
-            app.state.rf = None
+            app.state.EMBEDDING_FUNCTION = None
+            app.state.RERANKING_FUNCTION = None
         else:
-            app.state.ef = get_ef(rag_config.get('rag.embedding_engine'), rag_config.get('rag.embedding_model'))
+            embedding_engine = rag_config.get('rag.embedding_engine')
+            app.state.EMBEDDING_FUNCTION = get_embedding_function(
+                embedding_engine,
+                rag_config.get('rag.embedding_model'),
+                embedding_function=app.state.ef,
+                url=(
+                    rag_config.get('rag.openai.api_base_url')
+                    if embedding_engine == 'openai'
+                    else (
+                        rag_config.get('rag.ollama.base_url')
+                        if embedding_engine == 'ollama'
+                        else rag_config.get('rag.azure_openai.base_url')
+                    )
+                ),
+                key=(
+                    rag_config.get('rag.openai.api_key')
+                    if embedding_engine == 'openai'
+                    else (
+                        rag_config.get('rag.ollama.api_key')
+                        if embedding_engine == 'ollama'
+                        else rag_config.get('rag.azure_openai.api_key')
+                    )
+                ),
+                embedding_batch_size=rag_config.get('rag.embedding_batch_size'),
+                azure_api_version=(
+                    rag_config.get('rag.azure_openai.api_version') if embedding_engine == 'azure_openai' else None
+                ),
+                enable_async=rag_config.get('rag.enable_async_embedding'),
+                concurrent_requests=rag_config.get('rag.embedding_concurrent_requests'),
+            )
 
-        if rag_config.get('rag.enable_hybrid_search') and not rag_config.get('rag.bypass_embedding_and_retrieval'):
-            app.state.rf = get_rf(
+            app.state.RERANKING_FUNCTION = get_reranking_function(
                 rag_config.get('rag.reranking_engine'),
                 rag_config.get('rag.reranking_model'),
-                rag_config.get('rag.external_reranker_url'),
-                rag_config.get('rag.external_reranker_api_key'),
-                rag_config.get('rag.external_reranker_timeout'),
+                reranking_function=app.state.rf,
+                reranking_batch_size=rag_config.get('rag.reranking_batch_size'),
             )
-        else:
-            app.state.rf = None
-    except Exception as e:
-        log.error(f'Error updating models: {e}')
-        app.state.rf = None
-
-    rag_config = await Config.get_many(
-        'rag.embedding_engine',
-        'rag.embedding_model',
-        'rag.openai.api_base_url',
-        'rag.ollama.base_url',
-        'rag.azure_openai.base_url',
-        'rag.openai.api_key',
-        'rag.ollama.api_key',
-        'rag.azure_openai.api_key',
-        'rag.embedding_batch_size',
-        'rag.azure_openai.api_version',
-        'rag.enable_async_embedding',
-        'rag.embedding_concurrent_requests',
-        'rag.reranking_engine',
-        'rag.reranking_model',
-        'rag.reranking_batch_size',
-        'rag.bypass_embedding_and_retrieval',
-    )
-    if rag_config.get('rag.bypass_embedding_and_retrieval'):
-        app.state.EMBEDDING_FUNCTION = None
-        app.state.RERANKING_FUNCTION = None
-    else:
-        embedding_engine = rag_config.get('rag.embedding_engine')
-        app.state.EMBEDDING_FUNCTION = get_embedding_function(
-            embedding_engine,
-            rag_config.get('rag.embedding_model'),
-            embedding_function=app.state.ef,
-            url=(
-                rag_config.get('rag.openai.api_base_url')
-                if embedding_engine == 'openai'
-                else (
-                    rag_config.get('rag.ollama.base_url')
-                    if embedding_engine == 'ollama'
-                    else rag_config.get('rag.azure_openai.base_url')
-                )
-            ),
-            key=(
-                rag_config.get('rag.openai.api_key')
-                if embedding_engine == 'openai'
-                else (
-                    rag_config.get('rag.ollama.api_key')
-                    if embedding_engine == 'ollama'
-                    else rag_config.get('rag.azure_openai.api_key')
-                )
-            ),
-            embedding_batch_size=rag_config.get('rag.embedding_batch_size'),
-            azure_api_version=(
-                rag_config.get('rag.azure_openai.api_version') if embedding_engine == 'azure_openai' else None
-            ),
-            enable_async=rag_config.get('rag.enable_async_embedding'),
-            concurrent_requests=rag_config.get('rag.embedding_concurrent_requests'),
-        )
-
-        app.state.RERANKING_FUNCTION = get_reranking_function(
-            rag_config.get('rag.reranking_engine'),
-            rag_config.get('rag.reranking_model'),
-            reranking_function=app.state.rf,
-            reranking_batch_size=rag_config.get('rag.reranking_batch_size'),
-        )
 
 
 ########################################
@@ -742,13 +756,13 @@ app.mount('/ws', socket_app)
 app.include_router(ollama.router, prefix='/ollama', tags=['ollama'])
 app.include_router(openai.router, prefix='/openai', tags=['openai'])
 
+if not OPEN_WEBUI_LITE_MODE:
+    app.include_router(pipelines.router, prefix='/api/v1/pipelines', tags=['pipelines'])
+    app.include_router(task_routes.router, prefix='/api/v1/tasks', tags=['tasks'])
+    app.include_router(images.router, prefix='/api/v1/images', tags=['images'])
 
-app.include_router(pipelines.router, prefix='/api/v1/pipelines', tags=['pipelines'])
-app.include_router(tasks.router, prefix='/api/v1/tasks', tags=['tasks'])
-app.include_router(images.router, prefix='/api/v1/images', tags=['images'])
-
-app.include_router(audio.router, prefix='/api/v1/audio', tags=['audio'])
-app.include_router(retrieval.router, prefix='/api/v1/retrieval', tags=['retrieval'])
+    app.include_router(audio.router, prefix='/api/v1/audio', tags=['audio'])
+    app.include_router(retrieval.router, prefix='/api/v1/retrieval', tags=['retrieval'])
 
 app.include_router(configs.router, prefix='/api/v1/configs', tags=['configs'])
 
@@ -756,23 +770,28 @@ app.include_router(auths.router, prefix='/api/v1/auths', tags=['auths'])
 app.include_router(users.router, prefix='/api/v1/users', tags=['users'])
 
 
-app.include_router(channels.router, prefix='/api/v1/channels', tags=['channels'])
+if not OPEN_WEBUI_LITE_MODE:
+    app.include_router(channel_routes.router, prefix='/api/v1/channels', tags=['channels'])
 app.include_router(chats.router, prefix='/api/v1/chats', tags=['chats'])
 app.include_router(notes.router, prefix='/api/v1/notes', tags=['notes'])
 
 
 app.include_router(models.router, prefix='/api/v1/models', tags=['models'])
-app.include_router(knowledge.router, prefix='/api/v1/knowledge', tags=['knowledge'])
+if not OPEN_WEBUI_LITE_MODE:
+    app.include_router(knowledge.router, prefix='/api/v1/knowledge', tags=['knowledge'])
 app.include_router(prompts.router, prefix='/api/v1/prompts', tags=['prompts'])
 app.include_router(tools.router, prefix='/api/v1/tools', tags=['tools'])
 app.include_router(skills.router, prefix='/api/v1/skills', tags=['skills'])
 
-app.include_router(memories.router, prefix='/api/v1/memories', tags=['memories'])
+if not OPEN_WEBUI_LITE_MODE:
+    app.include_router(memory_routes.router, prefix='/api/v1/memories', tags=['memories'])
 app.include_router(folders.router, prefix='/api/v1/folders', tags=['folders'])
 app.include_router(groups.router, prefix='/api/v1/groups', tags=['groups'])
-app.include_router(files.router, prefix='/api/v1/files', tags=['files'])
+if not OPEN_WEBUI_LITE_MODE:
+    app.include_router(files.router, prefix='/api/v1/files', tags=['files'])
 app.include_router(functions.router, prefix='/api/v1/functions', tags=['functions'])
-app.include_router(evaluations.router, prefix='/api/v1/evaluations', tags=['evaluations'])
+if not OPEN_WEBUI_LITE_MODE:
+    app.include_router(evaluations.router, prefix='/api/v1/evaluations', tags=['evaluations'])
 if ENABLE_ADMIN_ANALYTICS:
     app.include_router(analytics.router, prefix='/api/v1/analytics', tags=['analytics'])
 app.include_router(utils.router, prefix='/api/v1/utils', tags=['utils'])
