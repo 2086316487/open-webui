@@ -1,0 +1,49 @@
+name: Prewarm HF Space
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 08:50 Asia/Shanghai, Monday-Friday. GitHub cron uses UTC.
+    - cron: "50 0 * * 1-5"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hf-space-prewarm
+  cancel-in-progress: false
+
+env:
+  HF_SPACE_URL: https://g2086316487-open-webui-gpt-full.hf.space
+
+jobs:
+  prewarm:
+    name: Prewarm Open WebUI health endpoint
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Request health endpoint
+        shell: bash
+        env:
+          HF_SPACE_TOKEN: ${{ secrets.HF_SPACE_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          headers=(-H "Accept: application/json")
+          if [[ -n "${HF_SPACE_TOKEN:-}" ]]; then
+            headers+=(-H "Authorization: Bearer ${HF_SPACE_TOKEN}")
+          else
+            echo "::warning::HF_SPACE_TOKEN is not configured. Private Spaces may reject this prewarm request."
+          fi
+
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --retry 2 \
+            --retry-delay 10 \
+            --connect-timeout 20 \
+            --max-time 180 \
+            "${headers[@]}" \
+            "${HF_SPACE_URL}/health"
